@@ -2,219 +2,192 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
-import yfinance as yf
+import matplotlib.dates as mdates
 
-class CornMarketTrendAnalyzer:
-    def __init__(self, sma_period=7):
-        """
-        Initialize the Corn Market Trend Analyzer
-        
-        Args:
-            sma_period (int): Period for Simple Moving Average calculation
-        """
-        self.sma_period = sma_period
-        self.data = None
-        self.signals = None
-        
-    def fetch_corn_data(self, symbol="CORN", period="1y"):
-        """
-        Fetch corn futures data
-        
-        Args:
-            symbol (str): Trading symbol for corn futures
-            period (str): Time period for data fetch
-        """
-        try:
-            # Fetch corn futures data (using a corn ETF as proxy)
-            ticker = yf.Ticker(symbol)
-            self.data = ticker.history(period=period)
-            print(f"Successfully fetched {len(self.data)} days of {symbol} data")
-            return True
-        except Exception as e:
-            print(f"Error fetching data: {e}")
-            # Generate synthetic data for demonstration
-            self.generate_synthetic_data()
-            return False
+def create_fvg_example():
+    """Create 1-minute Live Cattle futures data with FIRST FVG right at session open"""
     
-    def generate_synthetic_data(self, days=365):
-        """
-        Generate synthetic corn price data for testing
-        """
-        print("Generating synthetic corn price data...")
-        
-        # Start date
-        start_date = datetime.now() - timedelta(days=days)
-        dates = pd.date_range(start=start_date, periods=days, freq='D')
-        
-        # Generate realistic corn price movement
-        np.random.seed(42)
-        base_price = 600  # Cents per bushel
-        price_changes = np.random.normal(0, 15, days)  # Daily volatility
-        trend = np.sin(np.arange(days) * 2 * np.pi / 250) * 50  # Seasonal trend
-        
-        prices = [base_price]
-        for i in range(1, days):
-            new_price = prices[-1] + price_changes[i] + trend[i] * 0.1
-            prices.append(max(new_price, 300))  # Floor price
-        
-        self.data = pd.DataFrame({
-            'Open': prices,
-            'High': [p * (1 + abs(np.random.normal(0, 0.02))) for p in prices],
-            'Low': [p * (1 - abs(np.random.normal(0, 0.02))) for p in prices],
-            'Close': prices,
-            'Volume': np.random.randint(50000, 200000, days)
-        }, index=dates)
-        
-        print(f"Generated {len(self.data)} days of synthetic data")
+    # Create timestamp starting at 9:30:00 AM EST (session open)
+    base_time = datetime(2024, 12, 15, 9, 30, 0)  # Exact 9:30:00 AM start
+    times = []
     
-    def calculate_sma(self):
-        """
-        Calculate Simple Moving Average and trend signals
-        """
-        if self.data is None:
-            raise ValueError("No data available. Please fetch data first.")
-        
-        # Calculate SMA
-        self.data[f'SMA_{self.sma_period}'] = self.data['Close'].rolling(
-            window=self.sma_period
-        ).mean()
-        
-        # Determine trend bias
-        self.data['Trend_Bias'] = np.where(
-            self.data['Close'] > self.data[f'SMA_{self.sma_period}'],
-            'Bullish',
-            'Bearish'
-        )
-        
-        # Create signal changes
-        self.data['Signal_Change'] = self.data['Trend_Bias'].ne(
-            self.data['Trend_Bias'].shift()
-        )
-        
-        print(f"Calculated {self.sma_period}-period SMA and trend signals")
+    # Generate 2 hours of 1-minute bars (9:30 AM - 11:30 AM)
+    for i in range(120):
+        times.append(base_time + timedelta(minutes=i))
     
-    def get_current_bias(self):
-        """
-        Get the current market bias
-        """
-        if self.data is None or f'SMA_{self.sma_period}' not in self.data.columns:
-            return None
-        
-        latest = self.data.iloc[-1]
-        current_price = latest['Close']
-        current_sma = latest[f'SMA_{self.sma_period}']
-        current_bias = latest['Trend_Bias']
-        
-        return {
-            'date': latest.name.strftime('%Y-%m-%d'),
-            'close_price': round(current_price, 2),
-            'sma_value': round(current_sma, 2),
-            'bias': current_bias,
-            'price_vs_sma': round(((current_price / current_sma) - 1) * 100, 2)
-        }
+    # Create Live Cattle data where FIRST FVG forms immediately at session open
+    np.random.seed(99)  # New seed for immediate FVG
+    prices = []
     
-    def get_signal_summary(self):
-        """
-        Get summary of trend signals
-        """
-        if self.data is None:
-            return None
-        
-        # Remove NaN values
-        clean_data = self.data.dropna()
-        
-        total_days = len(clean_data)
-        bullish_days = len(clean_data[clean_data['Trend_Bias'] == 'Bullish'])
-        bearish_days = len(clean_data[clean_data['Trend_Bias'] == 'Bearish'])
-        
-        # Signal changes
-        signal_changes = clean_data['Signal_Change'].sum()
-        
-        return {
-            'total_trading_days': total_days,
-            'bullish_days': bullish_days,
-            'bearish_days': bearish_days,
-            'bullish_percentage': round((bullish_days / total_days) * 100, 1),
-            'bearish_percentage': round((bearish_days / total_days) * 100, 1),
-            'signal_changes': signal_changes
-        }
+    # Start with realistic overnight/pre-market close
+    overnight_close = 185.42
     
-    def plot_trend_analysis(self, days_to_show=90):
-        """
-        Plot the price data with SMA and trend signals
-        """
-        if self.data is None:
-            raise ValueError("No data available")
+    for i in range(120):
+        if i == 0:  # 9:30:00 AM - First candle after overnight
+            current_price = 185.47  # Small gap up from overnight
+            open_price = overnight_close + 0.08
+        elif i == 1:  # 9:31:00 AM - Second candle (creates the gap)
+            current_price = 185.88  # Significant gap up (news/volume)
+            open_price = 185.50
+        elif i == 2:  # 9:32:00 AM - Third candle (confirms FVG)
+            current_price = 185.85  # Slight pullback but gap holds
+            open_price = 185.87
+        elif i < 30:  # Next 30 minutes - continuation/consolidation
+            trend = 0.002
+            volatility = 0.04
+            current_price += np.random.normal(trend, volatility)
+        elif i < 60:  # Second half hour - normal trading
+            trend = 0.001  
+            volatility = 0.05
+            current_price += np.random.normal(trend, volatility)
+        else:  # Later session - quieter
+            trend = 0.0005
+            volatility = 0.03
+            current_price += np.random.normal(trend, volatility)
         
-        # Get recent data
-        recent_data = self.data.tail(days_to_show)
+        # Keep in realistic range
+        current_price = max(min(current_price, 190.00), 182.00)
         
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10))
+        # Create realistic OHLC
+        if i <= 2:  # First 3 candles - controlled for clear FVG
+            wick_size = abs(np.random.normal(0, 0.03))
+        else:
+            open_variance = np.random.normal(0, 0.02)
+            open_price = current_price + open_variance
+            wick_size = abs(np.random.normal(0, 0.04))
         
-        # Price and SMA plot
-        ax1.plot(recent_data.index, recent_data['Close'], 
-                label='Corn Close Price', linewidth=2, color='#2E8B57')
-        ax1.plot(recent_data.index, recent_data[f'SMA_{self.sma_period}'], 
-                label=f'{self.sma_period}-SMA', linewidth=2, color='#FF6B35')
-        
-        # Color background based on trend
-        for i in range(len(recent_data) - 1):
-            if recent_data.iloc[i]['Trend_Bias'] == 'Bullish':
-                ax1.axvspan(recent_data.index[i], recent_data.index[i+1], 
-                           alpha=0.1, color='green')
-            else:
-                ax1.axvspan(recent_data.index[i], recent_data.index[i+1], 
-                           alpha=0.1, color='red')
-        
-        ax1.set_title('Corn Price Trend Analysis', fontsize=16, fontweight='bold')
-        ax1.set_ylabel('Price (cents/bushel)', fontsize=12)
-        ax1.legend()
-        ax1.grid(True, alpha=0.3)
-        
-        # Trend bias plot
-        trend_numeric = recent_data['Trend_Bias'].map({'Bullish': 1, 'Bearish': -1})
-        colors = ['red' if x == -1 else 'green' for x in trend_numeric]
-        
-        ax2.bar(recent_data.index, trend_numeric, color=colors, alpha=0.7, width=0.8)
-        ax2.set_title('Daily Trend Bias', fontsize=14, fontweight='bold')
-        ax2.set_ylabel('Bias', fontsize=12)
-        ax2.set_yticks([-1, 1])
-        ax2.set_yticklabels(['Bearish', 'Bullish'])
-        ax2.grid(True, alpha=0.3)
-        
-        plt.tight_layout()
-        plt.xticks(rotation=45)
-        plt.show()
-        
-        # Print current status
-        current = self.get_current_bias()
-        if current:
-            print(f"\n🌽 CURRENT CORN MARKET STATUS 🌽")
-            print(f"Date: {current['date']}")
-            print(f"Close Price: ${current['close_price']:.2f}")
-            print(f"7-SMA: ${current['sma_value']:.2f}")
-            print(f"Current Bias: {current['bias']} ({'📈' if current['bias'] == 'Bullish' else '📉'})")
-            print(f"Price vs SMA: {current['price_vs_sma']:+.2f}%")
+        # Create high/low based on candle direction
+        if current_price >= open_price:  # Bullish candle
+            high = current_price + wick_size
+            low = open_price - wick_size * 0.8
+        else:  # Bearish candle
+            high = open_price + wick_size * 0.8
+            low = current_price - wick_size
+            
+        prices.append({
+            'Time': times[i],
+            'Open': round(open_price, 2),
+            'High': round(high, 2),
+            'Low': round(low, 2),
+            'Close': round(current_price, 2),
+            'Volume': np.random.randint(1200, 3000) if i < 10 else np.random.randint(600, 1800)
+        })
+    
+    return pd.DataFrame(prices)
 
-# Example usage
+def plot_fvg_example(df):
+    """Plot the 1-minute chart with First FVG highlighted and labeled"""
+    
+    fig, ax = plt.subplots(figsize=(16, 10))
+    
+    # Plot candlesticks
+    for i, row in df.iterrows():
+        time = row['Time']
+        
+        # Determine candle color
+        color = 'green' if row['Close'] >= row['Open'] else 'red'
+        edge_color = 'darkgreen' if row['Close'] >= row['Open'] else 'darkred'
+        
+        # Draw candle body
+        body_height = abs(row['Close'] - row['Open'])
+        body_bottom = min(row['Open'], row['Close'])
+        
+        ax.bar(time, body_height, bottom=body_bottom, 
+               width=timedelta(minutes=0.7), color=color, 
+               edgecolor=edge_color, alpha=0.8, linewidth=0.5)
+        
+        # Draw wicks
+        ax.plot([time, time], [row['Low'], row['High']], 
+                color='black', linewidth=1, alpha=0.7)
+    
+    # Identify FVG candles (indices 0, 1, 2 = 9:30, 9:31, 9:32 - THE FIRST FVG!)
+    c1_idx, c2_idx, c3_idx = 0, 1, 2
+    c1 = df.iloc[c1_idx]
+    c2 = df.iloc[c2_idx]  
+    c3 = df.iloc[c3_idx]
+    
+    # Check for Bullish FVG: C1 Low > C3 High
+    if c1['Low'] > c3['High']:
+        fvg_type = "Bullish"
+        fvg_open = c3['High']  # Bottom of FVG
+        fvg_close = c1['Low']  # Top of FVG
+        fvg_color = 'blue'
+    else:
+        fvg_type = "Bearish"  
+        fvg_open = c1['High']  # Top of FVG
+        fvg_close = c3['Low']  # Bottom of FVG
+        fvg_color = 'red'
+    
+    fvg_mid = (fvg_open + fvg_close) / 2
+    
+    # Draw FVG zone from formation time to end of chart
+    zone_start = c3['Time']
+    zone_end = df['Time'].iloc[-1]
+    
+    ax.axhspan(fvg_open, fvg_close, 
+               xmin=(zone_start - df['Time'].iloc[0]).total_seconds() / (zone_end - df['Time'].iloc[0]).total_seconds(),
+               alpha=0.25, color=fvg_color, zorder=1)
+    
+    # Draw FVG boundary lines
+    ax.axhline(fvg_open, color=fvg_color, linestyle='-', 
+               linewidth=2, alpha=0.8)
+    ax.axhline(fvg_close, color=fvg_color, linestyle='-', 
+               linewidth=2, alpha=0.8)
+    ax.axhline(fvg_mid, color='purple', linestyle='--', 
+               linewidth=2, alpha=0.7)
+    
+    # Format x-axis to show every 15 minutes
+    ax.xaxis.set_major_locator(mdates.MinuteLocator(interval=15))
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+    ax.xaxis.set_minor_locator(mdates.MinuteLocator(interval=5))
+    
+    # Rotate x-axis labels for better readability
+    plt.setp(ax.xaxis.get_majorticklabels(), rotation=45)
+    
+    # Add title and labels
+    ax.set_title(f'First FVG - Live Cattle Futures', 
+                fontsize=16, fontweight='bold', pad=20)
+    
+    ax.set_ylabel('Price ($/cwt)', fontsize=12)
+    ax.set_xlabel('Time (EST)', fontsize=12)
+    
+    # Add grid
+    ax.grid(True, alpha=0.3, linestyle='-', linewidth=0.5)
+    
+    # Set y-axis limits to show FVG clearly
+    y_min = df['Low'].min() - 0.2
+    y_max = df['High'].max() + 0.2
+    ax.set_ylim(y_min, y_max)
+    
+    plt.tight_layout()
+    return fig
+
+# Create and plot the example
 if __name__ == "__main__":
-    # Initialize the analyzer
-    analyzer = CornMarketTrendAnalyzer(sma_period=7)
+    print("🐄 Creating First FVG Example Chart for Live Cattle Futures...")
     
-    # Try to fetch real data, fallback to synthetic
-    print("🌽 Corn Market Trend Analyzer 🌽")
-    print("=" * 40)
+    # Generate example data
+    df = create_fvg_example()
     
-    analyzer.fetch_corn_data()
-    analyzer.calculate_sma()
+    # Print some details
+    print(f"Generated {len(df)} 1-minute bars from {df['Time'].iloc[0].strftime('%H:%M')} to {df['Time'].iloc[-1].strftime('%H:%M')} EST")
     
-    # Get summary
-    summary = analyzer.get_signal_summary()
-    print(f"\n📊 TREND ANALYSIS SUMMARY:")
-    print(f"Total Trading Days: {summary['total_trading_days']}")
-    print(f"Bullish Days: {summary['bullish_days']} ({summary['bullish_percentage']}%)")
-    print(f"Bearish Days: {summary['bearish_days']} ({summary['bearish_percentage']}%)")
-    print(f"Signal Changes: {summary['signal_changes']}")
+    # Check the FVG manually
+    c1, c2, c3 = df.iloc[45], df.iloc[46], df.iloc[47]
+    print(f"\nFVG Analysis:")
+    print(f"Candle 1 ({c1['Time'].strftime('%H:%M')}): Low=${c1['Low']:.2f}, High=${c1['High']:.2f}")
+    print(f"Candle 2 ({c2['Time'].strftime('%H:%M')}): Low=${c2['Low']:.2f}, High=${c2['High']:.2f}")
+    print(f"Candle 3 ({c3['Time'].strftime('%H:%M')}): Low=${c3['Low']:.2f}, High=${c3['High']:.2f}")
+    print(f"Bullish FVG? {c1['Low'] > c3['High']} (C1 Low: ${c1['Low']:.2f} > C3 High: ${c3['High']:.2f})")
     
-    # Plot the analysis
-    analyzer.plot_trend_analysis()
+    if c1['Low'] > c3['High']:
+        print(f"✅ THE FIRST BULLISH FVG CONFIRMED!")
+        print(f"   📍 Formed immediately at session open (9:32 AM)")
+        print(f"   🎯 FVG Zone: ${c3['High']:.2f} to ${c1['Low']:.2f}")
+        print(f"   📏 Gap Size: ${c1['Low'] - c3['High']:.2f}")
+        print(f"   🎪 FVG Mid: ${(c3['High'] + c1['Low'])/2:.2f}")
+        print(f"   ⏰ Formation Time: {c3['Time'].strftime('%H:%M:%S')} EST")
+    
+    # Create the visualization
+    fig = plot_fvg_example(df)
+    plt.show()
